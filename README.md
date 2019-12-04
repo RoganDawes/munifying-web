@@ -9,7 +9,16 @@ work with Logitech receivers utilizing a Texas Instruments Chip (R500, SPOTLIGHT
 Logitech Unifying with RQR24.x). The vulnerability was patched with firmware RQR24.10 / RQR24.11
 for Logitech Unifying receivers.
 
+## How to use
 
+Browse to [https://mame82.github.io/munifying-web/](https://mame82.github.io/munifying-web/) with
+Chrome 78+. Once the 'Experimental Web Platform features' are enabled, the `dump` button should
+present a dialog, which let you choose from connected Logitech receivers. If the dongle is
+vulnerable, extracted keys will be printed to the page.
+
+Everything runs locally in the browser.
+
+Inspect the `main.js` file to adopt this for other projects.
 
 For a full implemetation of a dumping/flashing tool for Unifying receivers, watch out for
 [munifying](https://github.com/mame82/munifying)
