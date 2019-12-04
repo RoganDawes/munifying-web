@@ -1,6 +1,3 @@
-//VID=0x046d;
-//PID=0xc540;
-
 let devHidVS;
 
 function buf2hex(buf, del) {
@@ -21,9 +18,7 @@ async function bread(offset) {
     data.setUint8(4, off.getUint8(0)); // p2 (readAddr LSB)
     data.setUint8(3, off.getUint8(1)); // p3 (readAddr MSB)
     data.setUint8(5, 0x00) // p4
-    
-    //console.log("Req " + buf2hex(hidPpShort, ":"));
-
+  
     res = new Promise( function(resolve, reject) {
         
         let wrongRsp = 0;
@@ -65,111 +60,116 @@ async function bread(offset) {
     return res;
 }
 
-async function dumpDevData() {
+function dumpDevData() {
     let pages = flashPagesToConsider = [0xe400, 0xe800, 0xec00, 0xf000];
-    return await new Promise(async function(resolve, reject) {
-        let activePage = 0;
-        for (let i=0; i<pages.length; i++) {
-            val = await bread(pages[i]);
-            console.log(val.toString(16))
-            if (val === 0x3f) activePage = pages[i];
-        }
+    return new Promise(async function(resolve, reject) {
+        try {
 
-        if (activePage === 0) reject("active flash page not found");
-
-        let res = {dongle:{}, devices: []}
-        for (let curEntryID = activePage + 4; curEntryID < activePage+0x400; curEntryID += 0x14) {
-            eID = await bread(curEntryID);
-            console.log("entry ID " + eID.toString(16));
-
-            if (eID == 0xff) break;
-
-            if (eID === 0x02) {
-                fw_maj = await bread(curEntryID + 4);
-                fw_min = await bread(curEntryID + 5);
-                fw_b = await bread(curEntryID + 6);
-                fw_b = fw_b << 8;
-                fw_b += await bread(curEntryID + 7);
-                wpid = await bread(curEntryID + 8);
-                wpid = wpid << 8;
-                wpid += await bread(curEntryID + 9);
+            let activePage = 0;
+            for (let i=0; i<pages.length; i++) {
+                val = await bread(pages[i]);
+                console.log(val.toString(16))
+                if (val === 0x3f) activePage = pages[i];
+            }
+    
+            if (activePage === 0) reject("no valid flash page found");
+    
+            let res = {dongle:{}, devices: []}
+            for (let curEntryID = activePage + 4; curEntryID < activePage+0x400; curEntryID += 0x14) {
+                eID = await bread(curEntryID);
+    
+                if (eID == 0xff) break;
+    
+                if (eID === 0x02) {
+                    fw_maj = await bread(curEntryID + 4);
+                    fw_min = await bread(curEntryID + 5);
+                    fw_b = await bread(curEntryID + 6);
+                    fw_b = fw_b << 8;
+                    fw_b += await bread(curEntryID + 7);
+                    wpid = await bread(curEntryID + 8);
+                    wpid = wpid << 8;
+                    wpid += await bread(curEntryID + 9);
+                    
+                    res.dongle.fw = "RQR" + fw_maj.toString(16).padStart (2, "0");
+                    res.dongle.fw += "." + fw_min.toString(16).padStart (2, "0");
+                    res.dongle.fw += ".B" + fw_b.toString(16).padStart (4, "0");
+                    res.dongle.WPID = "" + wpid.toString(16).padStart (4, "0");
+                    continue;
+                }
+    
+                if (eID === 0x03 && res.dongle.serial === undefined) {
+                    res.dongle.serial = (await bread(curEntryID + 4)).toString(16).padStart (2, "0") + ":";
+                    res.dongle.serial += (await bread(curEntryID + 5)).toString(16).padStart (2, "0") + ":";
+                    res.dongle.serial += (await bread(curEntryID + 6)).toString(16).padStart (2, "0") + ":";
+                    res.dongle.serial += (await bread(curEntryID + 7)).toString(16).padStart (2, "0");
+                    continue;
+                }
+    
+                if (eID === 0x7c) continue;
+    
+                devID = eID & 0x0f;
+                eID = eID & 0xf0;
+    
+                if (eID != 0 && devID >= res.devices.length) {
+                    res.devices.push({}); // add new dev obj to array
+                }
                 
-                res.dongle.fw = "RQR" + fw_maj.toString(16).padStart (2, "0");
-                res.dongle.fw += "." + fw_min.toString(16).padStart (2, "0");
-                res.dongle.fw += ".B" + fw_b.toString(16).padStart (4, "0");
-                res.dongle.WPID = "" + wpid.toString(16).padStart (4, "0");
-                continue;
+                switch (eID) {
+                    case 0x20:
+                        res.devices[devID].addr = res.dongle.serial + ":";
+                        let prefix = await bread(curEntryID + 4);
+                        res.devices[devID].addr += prefix.toString(16).padStart (2, "0");
+                        break;
+                    case 0x40:
+                        devName = new Uint8Array(new ArrayBuffer(await bread(curEntryID + 4)));
+                        for (let pos=0; pos < devName.length; pos++) {
+                            devName[pos] = await bread(curEntryID + 5 + pos);
+                        }
+                        res.devices[devID].devName = new TextDecoder().decode(devName);
+                        break;
+                    case 0x60:
+                        let key = new Uint8Array(new ArrayBuffer(16));
+                        key[0] = await bread(curEntryID + 4 + 7);
+                        key[1] = await bread(curEntryID + 4 + 1);
+                        key[1] ^= 0x00ff;
+                        key[2] = await bread(curEntryID + 4);
+                        key[3] = await bread(curEntryID + 4 + 3);
+                        key[4] = await bread(curEntryID + 4 + 10);
+                        key[5] = await bread(curEntryID + 4 + 2);
+                        key[5] ^= 0xff;
+                        key[6] = await bread(curEntryID + 4 + 9);
+                        key[6] ^= 0x55;
+                        key[7] = await bread(curEntryID + 4 + 14);
+                        key[8] = await bread(curEntryID + 4 + 8);
+                        key[9] = await bread(curEntryID + 4 + 6);
+                        key[10] = await bread(curEntryID + 4 + 12);
+                        key[10] ^= 0xff;
+                        key[11] = await bread(curEntryID + 4 + 5);
+                        key[12] = await bread(curEntryID + 4 + 13);
+                        key[13] = await bread(curEntryID + 4 + 15);
+                        key[13] ^= 0x55;
+                        key[14] = await bread(curEntryID + 4 + 4);
+                        key[15] = await bread(curEntryID + 4 + 11);
+    
+                        //res.devices[devID].key = key;
+                        res.devices[devID].devAESKey = buf2hex(key,"");
+                        break;
+                }        
             }
-
-            if (eID === 0x03 && res.dongle.serial === undefined) {
-                res.dongle.serial = (await bread(curEntryID + 4)).toString(16).padStart (2, "0") + ":";
-                res.dongle.serial += (await bread(curEntryID + 5)).toString(16).padStart (2, "0") + ":";
-                res.dongle.serial += (await bread(curEntryID + 6)).toString(16).padStart (2, "0") + ":";
-                res.dongle.serial += (await bread(curEntryID + 7)).toString(16).padStart (2, "0");
-                continue;
-            }
-
-            if (eID === 0x7c) continue;
-
-            devID = eID & 0x0f;
-            eID = eID & 0xf0;
-
-            console.log("dev " + devID + " entry " + eID.toString(16));
-            if (eID != 0 && devID >= res.devices.length) {
-                res.devices.push({});
-            }
-            
-            switch (eID) {
-                case 0x20:
-                    res.devices[devID].addr = res.dongle.serial + ":";
-                    let prefix = await bread(curEntryID + 4);
-                    res.devices[devID].addr += prefix.toString(16).padStart (2, "0");
-                    break;
-                case 0x40:
-                    devName = new Uint8Array(new ArrayBuffer(await bread(curEntryID + 4)));
-                    for (let pos=0; pos < devName.length; pos++) {
-                        devName[pos] = await bread(curEntryID + 5 + pos);
-                    }
-                    res.devices[devID].devName = new TextDecoder().decode(devName);
-                    break;
-                case 0x60:
-                    let key = new Uint8Array(new ArrayBuffer(16));
-                    key[0] = await bread(curEntryID + 4 + 7);
-                    key[1] = await bread(curEntryID + 4 + 1);
-                    key[1] ^= 0x00ff;
-                    key[2] = await bread(curEntryID + 4);
-                    key[3] = await bread(curEntryID + 4 + 3);
-                    key[4] = await bread(curEntryID + 4 + 10);
-                    key[5] = await bread(curEntryID + 4 + 2);
-                    key[5] ^= 0xff;
-                    key[6] = await bread(curEntryID + 4 + 9);
-                    key[6] ^= 0x55;
-                    key[7] = await bread(curEntryID + 4 + 14);
-                    key[8] = await bread(curEntryID + 4 + 8);
-                    key[9] = await bread(curEntryID + 4 + 6);
-                    key[10] = await bread(curEntryID + 4 + 12);
-                    key[10] ^= 0xff;
-                    key[11] = await bread(curEntryID + 4 + 5);
-                    key[12] = await bread(curEntryID + 4 + 13);
-                    key[13] = await bread(curEntryID + 4 + 15);
-                    key[13] ^= 0x55;
-                    key[14] = await bread(curEntryID + 4 + 4);
-                    key[15] = await bread(curEntryID + 4 + 11);
-
-                    //res.devices[devID].key = key;
-                    res.devices[devID].devAESKey = buf2hex(key,"");
-                    break;
-            }
-            
-        
+            resolve(res);
+        } catch(e) {
+            reject(e);
         }
-
-        resolve(res);
     });    
 }
 
 window.onload = () => {
     const bt1 = document.getElementById('bt1');
+
+    if (navigator.hid === undefined) {
+        document.getElementById("result").value += "WebHID not available. For Chrome 78 WebHID could be enabled with the flag 'Experimental Web Platform features' \n";
+    }
+
     bt1.onclick = async () => {
         devs = await navigator.hid.getDevices();
         if (devs.length == 0) {
@@ -178,29 +178,18 @@ window.onload = () => {
             devHidVS = devs[0];
         }
         
-        if (!devHidVS.opened) await devHidVS.open();
+        try {
+            if (!devHidVS.opened) await devHidVS.open();
 
-        /*
-        devHidVS.addEventListener('inputreport', function (rawevent) {
-           //console.log("report ID: " + rawevent.reportId + " data: " + buf2hex(rawevent.data.buffer, ":"));          
-        });
-        */
-
-        console.log(devHidVS)
-        devData = await dumpDevData();
-        
-        document.getElementById("alltext").value += JSON.stringify(devData, null, 1) + "\n";
-/*        
-        for (let i=0xe400; i<0xf400; i++) {
-            val = await bread(i);
-            console.log("offset 0x" + i.toString(16).padStart (4, "0") + ": 0x" + val.toString(16).padStart (2, "0"));
-
-            let str = val.toString(16).padStart (2, "0")
-            if (i % 4 === 3) str += " ";
-            if (i % 32 == 31) str += "\n";
-            if (i % 32 == 0) str = i.toString(16).padStart (4, "0") + ": " + str;
-            document.getElementById("alltext").value += str;
-        } 
-*/                
+            devData = await dumpDevData();
+            
+            document.getElementById("result").value += JSON.stringify(devData, null, 1) + "\n";
+            devData.devices.forEach(dev => {
+                document.getElementById("commands").value += "devices add " + dev.addr.toUpperCase() + " " + dev.devAESKey.toUpperCase() + "\n";
+                document.getElementById("commands").value += "devices storage save " + dev.addr.toUpperCase() + "\n";
+            });    
+        } catch (e) {
+            document.getElementById("result").value += "Can't dump keys from selected device (no TI chip or patched against key extraction)\n";
+        }
     }    
 }

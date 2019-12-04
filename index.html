@@ -1,9 +1,21 @@
 <html>
     <head>
+        <title>Web based PoC for CVE-2019-13054/CVE-2019-13055</title>
         <script src="main.js"></script>
     </head>
     <body>
+        This PoC is meant to extract AES keys from vulnerable Unifying receivers (CVE-2019-13054, CVE-2019-13055).
+        It only works for unpatched receivers with TI chip and uses upcoming WebHID API.
+        <br><br>
+        Currently WebHID if available under a flag in Chrome 78 and supposed to arrive with Chrome 80.
+        WebHID could be enabled using the 'Experimental Web Platform features' here: 
+        <a href="chrome://flags/#enable-experimental-web-platform-features">chrome://flags/#enable-experimental-web-platform-features</a>
+        <br><br>
         <input type="button" id="bt1" value="dump"></button><br>
-        <textarea id="alltext" style="width: 100%; height: 80%"></textarea>
+        <textarea id="result" style="width: 100%; height: 60%"></textarea>
+        <br><br>
+        LOGITacker commands to store devices along with keys (for live decryption)
+        <br>
+        <textarea id="commands" style="width: 100%; height: 20%"></textarea>
     </body>
 </html>
