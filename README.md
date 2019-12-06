@@ -20,7 +20,7 @@ Everything runs locally in the browser.
 
 Inspect the `main.js` file to adopt this for other projects.
 
-For a full implemetation of a dumping/flashing tool for Unifying receivers, watch out for
+For a full implementation of a dumping/flashing tool for Unifying receivers, watch out for
 [munifying](https://github.com/mame82/munifying)
 
 ## DISCLAIMER
